@@ -801,6 +801,12 @@
       print(t("marbles_scatter"));
       // the BASIC uses OB(5) as the "bolinhas" but it is actually the OLHO item
       OB[5] = L;
+
+      // Re-print objects at the current location (without clearing), so the new object is described immediately.
+      print("");
+      for (let i = 1; i <= NB; i++) {
+        if (OB[i] === L) print(SI$[i]);
+      }
     }
 
     function cmdAcender() {
