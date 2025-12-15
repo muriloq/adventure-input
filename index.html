@@ -638,8 +638,8 @@
     // ============================================================
     // Locations
     // ============================================================
-    function describeLocation() {
-      clearScreen();
+    function describeLocation(clear = true) {
+      if (clear) clearScreen();
 
       // (line 320) random tax collector placement
       if (Math.floor(Math.random() * 15) + 1 === 1 && TA === 0) {
@@ -810,7 +810,12 @@
       LA = 1;
       // In the dark room, exits are computed inside loc11() based on lamp state.
       // After lighting the lamp, re-describe the location so exits are revealed and movement is enabled.
-      if (L === 11) { describeLocation(); return; }
+      if (L === 11) {
+        print(t("ok"));
+        print("");
+        describeLocation(false);
+        return;
+      }
       print(t("ok"));
     }
 
