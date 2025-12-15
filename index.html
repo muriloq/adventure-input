@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>AVENTURA INPUT</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: monospace;
+      background: #111;
+      color: #eee;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* --- Cover overlay (Option 1) --- */
+    #cover-screen {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    #cover-image {
+      max-width: min(980px, 95vw);
+      max-height: 95vh;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      image-rendering: auto;
+      box-shadow: 0 0 40px rgba(0,0,0,0.8);
+    }
+    #cover-hint {
+      position: fixed;
+      bottom: 14px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: #ccc;
+      font-size: 14px;
+      opacity: 0.9;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      pointer-events: none;
+      white-space: pre-line;
+    }
+
+    /* --- Main game layout --- */
+    #top {
+      display: flex;
+      flex-direction: row;
+      flex: 1;
+      overflow: hidden;
+    }
+    #screen {
+      flex: 2;
+      padding: 10px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    #right-panel {
+      flex: 1;
+      border-left: 1px solid #444;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #image-area {
+      flex: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #333;
+      background: #000;
+    }
+    #loc-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      image-rendering: auto;
+      background: #000;
+    }
+    #objects-area {
+      flex: 1;
+      padding: 6px;
+      overflow-y: auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 6px;
+      background: #111;
+      border-top: 1px solid #222;
+    }
+    .obj-thumb {
+      width: 128px;
+      height: 128px;
+      object-fit: contain;
+      background: #000;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+
+    #input-area {
+      padding: 8px 10px 8px 10px;
+      border-top: 1px solid #444;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #prompt-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #cmd {
+      flex: 1;
+      font-family: monospace;
+      font-size: 16px;
+      padding: 6px;
+      background: #111;
+      color: #eee;
+      border: 1px solid #555;
+      outline: none;
+      text-transform: uppercase; /* UI hint; still enforced in JS */
+    }
+    #inventory-area {
+      min-height: 160px;
+      padding: 4px 0 0 0;
+      border-top: 1px solid #333;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    #inv-label {
+      font-size: 11px;
+      color: #aaa;
+      margin-right: 4px;
+    }
+    .inv-thumb {
+      width: 128px;
+      height: 128px;
+      object-fit: contain;
+      background: #000;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+
+<body>
+  <audio id="bgm" src="hidden-past-kevin-macleod-main-version-18636-03-12.mp3" loop ></audio>
+  
+  <!-- Cover overlay -->
+  <div id="cover-screen" aria-label="Capa do jogo">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+      <img id="cover-image" src="cover.png" alt="AVENTURA INPUT - Capa">
+      <div id="cover-hint">🇧🇷 PRESSIONE ENTER PARA COMEÇAR
+🇬🇧 PRESS ENTER TO START</div>
+    </div>
+  </div>
+
+  <!-- Game UI -->
+  <div id="top">
+    <div id="screen"></div>
+
+    <div id="right-panel">
+      <div id="image-area">
+        <img id="loc-image" src="" alt="">
+      </div>
+      <div id="objects-area" aria-label="Objetos aqui"></div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <div id="prompt-line">
+      <span id="prompt">PARA ONDE</span>
+      <input id="cmd" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <div id="inventory-area" aria-label="Inventário">
+      <span id="inv-label">INVENTÁRIO:</span>
+    </div>
+  </div>
+
+  <script>
+    const bgm = document.getElementById("bgm");
+
+    // ============================================================
+    // Helpers: normalize strings
+    // ============================================================
+
+    // Collapse 2+ spaces anywhere inside the string, also trim.
+    function squeezeSpaces(s) {
+      return String(s ?? "").replace(/\s{2,}/g, " ").trim();
+    }
+
+    // Uppercase + collapse multiple spaces.
+    function normalizeInputLine(s) {
+      const up = squeezeSpaces(String(s ?? "").toUpperCase());
+      // Make input matching diacritic-insensitive (players can type NAO/LAMPADA/etc).
+      // Also supports accented typing: NÃO/LÂMPADA → NAO/LAMPADA.
+      try {
+        return up.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      } catch {
+        return up;
+      }
+    }
+
+    // Collapse multiple spaces in all printed strings too.
+    function normalizeOutputLine(s) {
+      return squeezeSpaces(String(s ?? ""));
+    }
+
+    // ============================================================
+    // State (BASIC-like)
+    // ============================================================
+    let L = 15;
+    let N = 0, S = 0, E = 0, W = 0;
+    let LA = 0;           // lamp lit
+    let TA = 0;           // taxman appeared
+    let I$ = "";          // full input
+    let V$ = "";          // verb
+    let N$ = "";          // noun
+    let I = 0;            // verb code
+    let moveDir = "";     // canonical movement dir: "N" | "E" | "S" | "W"
+
+    let NB;
+    let OB = [];          // object positions
+    let OB$ = [];         // object names
+    let OBM$ = [];        // object names normalized for matching
+    let SI$ = [];         // object location strings
+    let R$ = [];          // verbs
+    let R  = [];          // verb codes
+
+    // gameMode: "cover" (waiting ENTER), "question" (waiting S/N or ENTER), "play"
+    let gameMode = "cover";
+
+    // language: "pt" | "en"
+    let lang = "pt";
+
+    // ============================================================
+    // i18n
+    // ============================================================
+    const I18N = {
+      pt: {
+        title: "AVENTURA INPUT",
+        prompt_where_to: "PARA ONDE",
+        inv_label: "INVENTÁRIO:",
+
+        choose_lang: "ESCOLHA O IDIOMA (PT/EN):",
+        choose_lang_invalid: "OPÇÃO INVÁLIDA. DIGITE PT OU EN.",
+
+        want_instructions: "QUER INSTRUÇÕES (S/N)?",
+        press_enter_continue: "APERTE ENTER PARA CONTINUAR",
+
+        intro_1: "DEVIDO A UM COLAPSO FINANCEIRO VOCÊ DEIXOU O PAÍS.",
+        intro_2: "SEUS PROBLEMAS VÃO TERMINAR QUANDO VOCÊ ENCONTRAR O LEGENDÁRIO OLHO CRAVEJADO DE BRILHANTES DE UM TOTEM INCA. DEPOIS DE ENCONTRÁ-LO VOCÊ PRECISA ACHAR A SAÍDA.",
+        intro_3: "CUIDADO COM O COLETOR DE IMPOSTOS!",
+
+        loc_outside_building: "VOCÊ ESTÁ DO LADO DE FORA DE UMA GRANDE CONSTRUÇÃO",
+        loc_river: "VOCÊ ESTÁ À BEIRA DE UM GRANDE RIO",
+        loc_petrified_forest: "VOCÊ ESTÁ NUMA FLORESTA PETRIFICADA",
+        loc_dirty_room: "VOCÊ ESTÁ NUMA SALA MUITO SUJA",
+        loc_dark_room: "VOCÊ ESTÁ NUM QUARTO ESCURO",
+        loc_too_dark: "ESTÁ MUITO ESCURO PARA VER AS SAÍDAS",
+        loc_muddy_shortcut: "VOCÊ ESTÁ NUM ATALHO ENLAMEADO",
+        loc_hidden_city_entrance: "VOCÊ ESTÁ NA ENTRADA DA CIDADE OCULTA",
+        loc_entrance_hall: "VOCÊ ESTÁ NO HALL DE ENTRADA",
+        loc_courtyard: "VOCÊ ESTÁ NO PÁTIO",
+        loc_garden: "VOCÊ ESTÁ NO JARDIM",
+        loc_pantry: "VOCÊ ESTÁ NO GUARDA-LOUÇAS",
+        loc_throne_room: "VOCÊ ESTÁ NA SALA DO TRONO",
+
+        exits_you_can_go: "PODE SEGUIR",
+        dir_north: "NORTE",
+        dir_east: "LESTE",
+        dir_south: "SUL",
+        dir_west: "OESTE",
+
+        echo_prefix: "PARA ONDE",
+        dont_know_how: "EU NÃO SEI COMO",
+
+        cant_go_that_way: "DESCULPE - VOCÊ NÃO PODE IR POR ESTE CAMINHO.",
+
+        you_have: "VOCÊ TEM",
+        nothing: "NADA",
+
+        already_have_it: "VOCÊ JÁ PEGOU",
+        not_here: "NÃO ESTÁ AQUI",
+        ok: "OK",
+        cant_do_what_you_dont_have: (verb) => `VOCÊ NÃO PODE ${verb} O QUE NÃO TEM`,
+
+        pull_nothing: "NADA ACONTECE",
+        cant_pull: "VOCÊ NÃO PODE PUXAR ISSO!",
+        flushed: "VOCÊ CAI DENTRO DO VASO E VAI EMBORA COM A DESCARGA",
+        congrats: "PARABÉNS! VOCÊ COMPLETOU A TAREFA",
+
+        where: "ONDE?!",
+        drowned: "QUE VERGONHA. VOCÊ SE AFOGOU!",
+        found_revolver: "VOCÊ ACHOU UM REVÓLVER",
+        soaked: "VOCÊ SE MOLHOU TODO",
+
+        cant_be_emptied: "ISTO NÃO PODE SER ESVAZIADO",
+        marbles_scatter: "AS BOLINHAS SE ESPALHAM PELO CHÃO",
+
+        cant_be_done: "NÃO PODE SER FEITO",
+        already_lit: "JÁ ESTÁ ACESA",
+
+        with_what: "COM O QUE?",
+        who_q: (verb) => `${verb} QUEM?`,
+        you_killed_the: (who) => `VOCÊ MATOU O ${who}`,
+
+        cant_help_now: "DESCULPE, NÃO POSSO AJUDAR AGORA",
+        bricks_heavy: "TIJOLOS SÃO MUITO PESADOS. SEU BRAÇO DEVE ESTAR DOENDO.",
+
+        taxman_dungeon: "COMO VOCÊ NÃO TEM NADA QUE POSSA SER CONFISCADO, ELE O PRENDEU EM UMA MASMORRA IMUNDA.",
+        taxman_takes: (item) => `ELE TOMA O ${item} DE VOCÊ`,
+
+        play_again: "QUER JOGAR NOVAMENTE (S/N)?",
+        end: "FIM.",
+
+        obj_here_bag: "HÁ UM SACO DE BOLAS DE GUDE AQUI",
+        obj_here_brick: "TEM UM TIJOLO NO CHÃO",
+        obj_here_chain: "HÁ UMA CORRENTE PENDURADA SOBRE O TRONO",
+        obj_here_revolver: "TEM UM REVÓLVER NO CHÃO",
+        obj_here_eye: "UM OLHO CRAVEJADO DE BRILHANTES ESTÁ NO CHÃO",
+        obj_here_lamp: "VOCÊ ESTÁ DIANTE DE UMA LÂMPADA",
+        obj_here_taxman: "DE REPENTE SURGE UM COLETOR DE IMPOSTOS",
+      },
+      en: {
+        title: "INPUT ADVENTURE",
+        prompt_where_to: "WHERE TO",
+        inv_label: "INVENTORY:",
+
+        choose_lang: "CHOOSE LANGUAGE (PT/EN):",
+        choose_lang_invalid: "INVALID OPTION. TYPE PT OR EN.",
+
+        want_instructions: "DO YOU WANT INSTRUCTIONS (Y/N)?",
+        press_enter_continue: "PRESS ENTER TO CONTINUE",
+
+        intro_1: "DUE TO A FINANCIAL COLLAPSE, YOU LEFT THE COUNTRY.",
+        intro_2: "YOUR TROUBLES WILL END WHEN YOU FIND THE LEGENDARY JEWELED EYE FROM AN INCA TOTEM. AFTER YOU FIND IT, YOU MUST FIND THE EXIT.",
+        intro_3: "BEWARE OF THE TAX COLLECTOR!",
+
+        loc_outside_building: "YOU ARE OUTSIDE A LARGE BUILDING",
+        loc_river: "YOU ARE ON THE BANK OF A GREAT RIVER",
+        loc_petrified_forest: "YOU ARE IN A PETRIFIED FOREST",
+        loc_dirty_room: "YOU ARE IN A VERY DIRTY ROOM",
+        loc_dark_room: "YOU ARE IN A DARK ROOM",
+        loc_too_dark: "IT IS TOO DARK TO SEE THE EXITS",
+        loc_muddy_shortcut: "YOU ARE ON A MUDDY SHORTCUT",
+        loc_hidden_city_entrance: "YOU ARE AT THE ENTRANCE TO THE HIDDEN CITY",
+        loc_entrance_hall: "YOU ARE IN THE ENTRANCE HALL",
+        loc_courtyard: "YOU ARE IN THE COURTYARD",
+        loc_garden: "YOU ARE IN THE GARDEN",
+        loc_pantry: "YOU ARE IN THE PANTRY",
+        loc_throne_room: "YOU ARE IN THE THRONE ROOM",
+
+        exits_you_can_go: "YOU CAN GO",
+        dir_north: "NORTH",
+        dir_east: "EAST",
+        dir_south: "SOUTH",
+        dir_west: "WEST",
+
+        echo_prefix: "WHERE TO",
+        dont_know_how: "I DON'T KNOW HOW TO",
+
+        cant_go_that_way: "SORRY - YOU CAN'T GO THAT WAY.",
+
+        you_have: "YOU HAVE",
+        nothing: "NOTHING",
+
+        already_have_it: "YOU ALREADY HAVE IT",
+        not_here: "IT'S NOT HERE",
+        ok: "OK",
+        cant_do_what_you_dont_have: (verb) => `YOU CAN'T ${verb} WHAT YOU DON'T HAVE`,
+
+        pull_nothing: "NOTHING HAPPENS",
+        cant_pull: "YOU CAN'T PULL THAT!",
+        flushed: "YOU FALL INTO THE TOILET AND GET FLUSHED AWAY",
+        congrats: "CONGRATULATIONS! YOU COMPLETED THE TASK",
+
+        where: "WHERE?!",
+        drowned: "HOW EMBARRASSING. YOU DROWNED!",
+        found_revolver: "YOU FOUND A REVOLVER",
+        soaked: "YOU GOT SOAKED",
+
+        cant_be_emptied: "THAT CAN'T BE EMPTIED",
+        marbles_scatter: "THE MARBLES SCATTER ACROSS THE FLOOR",
+
+        cant_be_done: "CAN'T BE DONE",
+        already_lit: "IT'S ALREADY LIT",
+
+        with_what: "WITH WHAT?",
+        who_q: (verb) => `${verb} WHO?`,
+        you_killed_the: (who) => `YOU KILLED THE ${who}`,
+
+        cant_help_now: "SORRY, I CAN'T HELP RIGHT NOW",
+        bricks_heavy: "BRICKS ARE VERY HEAVY. YOUR ARM MUST BE HURTING.",
+
+        taxman_dungeon: "SINCE YOU HAVE NOTHING TO CONFISCATE, HE THREW YOU INTO A FILTHY DUNGEON.",
+        taxman_takes: (item) => `HE TAKES THE ${item} FROM YOU`,
+
+        play_again: "PLAY AGAIN (Y/N)?",
+        end: "THE END.",
+
+        obj_here_bag: "THERE IS A BAG OF MARBLES HERE",
+        obj_here_brick: "THERE IS A BRICK ON THE FLOOR",
+        obj_here_chain: "A CHAIN IS HANGING ABOVE THE THRONE",
+        obj_here_revolver: "THERE IS A REVOLVER ON THE FLOOR",
+        obj_here_eye: "A JEWELED EYE IS ON THE FLOOR",
+        obj_here_lamp: "YOU ARE STANDING BEFORE A LAMP",
+        obj_here_taxman: "SUDDENLY, A TAX COLLECTOR APPEARS",
+      }
+    };
+
+    function t(key, ...args) {
+      const v = I18N[lang]?.[key];
+      if (typeof v === "function") return v(...args);
+      return (v ?? String(key));
+    }
+
+    // ============================================================
+    // DOM
+    // ============================================================
+    const screen = document.getElementById("screen");
+    const input = document.getElementById("cmd");
+    const promptEl = document.getElementById("prompt");
+    const invLabelEl = document.getElementById("inv-label");
+
+    const locImage = document.getElementById("loc-image");
+    const objectsArea = document.getElementById("objects-area");
+    const inventoryArea = document.getElementById("inventory-area");
+
+    const coverScreen = document.getElementById("cover-screen");
+
+    function applyLanguageUI() {
+      document.documentElement.lang = (lang === "pt") ? "pt-BR" : "en";
+      document.title = t("title");
+      if (promptEl) promptEl.textContent = t("prompt_where_to");
+      if (invLabelEl) invLabelEl.textContent = t("inv_label");
+      if (objectsArea) objectsArea.setAttribute("aria-label", (lang === "pt") ? "Objetos aqui" : "Objects here");
+      if (inventoryArea) inventoryArea.setAttribute("aria-label", (lang === "pt") ? "Inventário" : "Inventory");
+    }
+
+    function print(text = "") {
+      screen.textContent += normalizeOutputLine(text) + "\n";
+      screen.scrollTop = screen.scrollHeight;
+    }
+
+    function clearScreen() {
+      screen.textContent = "";
+    }
+
+    function showLocationImage() {
+      locImage.src = "loc" + L + ".png";
+    }
+
+    function refreshObjectsInLocation() {
+      objectsArea.innerHTML = "";
+      for (let i = 1; i <= NB; i++) {
+        if (OB[i] === L) {
+          const img = document.createElement("img");
+          img.className = "obj-thumb";
+          img.src = "obj" + i + ".png";
+          img.alt = OB$[i];
+          img.title = OB$[i];
+          objectsArea.appendChild(img);
+        }
+      }
+    }
+
+    function refreshInventoryImages() {
+      // keep label
+      while (inventoryArea.children.length > 1) {
+        inventoryArea.removeChild(inventoryArea.lastChild);
+      }
+      for (let i = 1; i <= NB; i++) {
+        if (OB[i] === -1) {
+          const img = document.createElement("img");
+          img.className = "inv-thumb";
+          img.src = "obj" + i + ".png";
+          img.alt = OB$[i];
+          img.title = OB$[i];
+          inventoryArea.appendChild(img);
+        }
+      }
+    }
+
+    function hideCover() {
+      if (coverScreen) coverScreen.style.display = "none";
+    }
+
+    // ============================================================
+    // Init data (from BASIC)
+    // ============================================================
+    const VERBS = {
+      pt: [
+        { token: "NADAR", code: 5 },
+        { token: "ESVAZIAR", code: 6 },
+        { token: "ACENDER", code: 7 },
+        { token: "DESISTIR", code: 8 },
+        { token: "LISTAR", code: 9 },
+        { token: "INVENTARIO", code: 9 },
+        { token: "MATAR", code: 10 },
+        { token: "ATIRAR", code: 10 },
+        { token: "AJUDAR", code: 11 },
+        { token: "PEGAR", code: 2 },
+        { token: "APANHAR", code: 2 },
+        { token: "CARREGAR", code: 2 },
+        { token: "COLOCAR", code: 3 },
+        { token: "DEIXAR", code: 3 },
+        { token: "LARGAR", code: 3 },
+        { token: "PUXAR", code: 4 },
+        { token: "NORTE", code: 1, dir: "N" },
+        { token: "SUL", code: 1, dir: "S" },
+        { token: "LESTE", code: 1, dir: "E" },
+        { token: "ESTE", code: 1, dir: "E" },
+        { token: "OESTE", code: 1, dir: "W" },
+      ],
+      en: [
+        { token: "SWIM", code: 5 },
+        { token: "EMPTY", code: 6 },
+        { token: "LIGHT", code: 7 },
+        { token: "TURNON", code: 7 },
+        { token: "GIVEUP", code: 8 },
+        { token: "QUIT", code: 8 },
+        { token: "LIST", code: 9 },
+        { token: "INVENTORY", code: 9 },
+        { token: "INV", code: 9 },
+        { token: "I", code: 9 },
+        { token: "KILL", code: 10 },
+        { token: "SHOOT", code: 10 },
+        { token: "HELP", code: 11 },
+        { token: "GET", code: 2 },
+        { token: "TAKE", code: 2 },
+        { token: "PICK", code: 2 },
+        { token: "GRAB", code: 2 },
+        { token: "DROP", code: 3 },
+        { token: "LEAVE", code: 3 },
+        { token: "PUT", code: 3 },
+        { token: "PULL", code: 4 },
+        { token: "NORTH", code: 1, dir: "N" },
+        { token: "SOUTH", code: 1, dir: "S" },
+        { token: "EAST", code: 1, dir: "E" },
+        { token: "WEST", code: 1, dir: "W" },
+      ],
+    };
+
+    function initVerbsForLang() {
+      const list = VERBS[lang] || VERBS.pt;
+      R$ = list.map(v => v.token);
+      R  = list.map(v => v.code);
+    }
+
+    function initObjects() {
+      NB = 7;
+      const defs = [
+        null,
+        { pos: 7,  name: { pt: "SACO", en: "BAG" }, hereKey: "obj_here_bag" },
+        { pos: 14, name: { pt: "TIJOLO", en: "BRICK" }, hereKey: "obj_here_brick" },
+        { pos: 24, name: { pt: "CORRENTE", en: "CHAIN" }, hereKey: "obj_here_chain" },
+        { pos: 0,  name: { pt: "REVÓLVER", en: "REVOLVER" }, hereKey: "obj_here_revolver" },
+        { pos: 0,  name: { pt: "OLHO", en: "EYE" }, hereKey: "obj_here_eye" },
+        { pos: 22, name: { pt: "LÂMPADA", en: "LAMP" }, hereKey: "obj_here_lamp" },
+        { pos: 0,  name: { pt: "COLETOR DE IMPOSTOS", en: "TAX COLLECTOR" }, hereKey: "obj_here_taxman" },
+      ];
+
+      OB = new Array(NB + 1);
+      OB$ = new Array(NB + 1);
+      OBM$ = new Array(NB + 1);
+      SI$ = new Array(NB + 1);
+
+      for (let i = 1; i <= NB; i++) {
+        OB[i]  = defs[i].pos;
+        OB$[i] = defs[i].name[lang] || defs[i].name.pt;
+        OBM$[i] = normalizeInputLine(OB$[i]);
+        SI$[i] = t(defs[i].hereKey);
+      }
+    }
+
+    function objNameMatches(i, noun) {
+      return (OBM$[i] || "").startsWith(noun);
+    }
+
+    // ============================================================
+    // Parsing / command lookup
+    // ============================================================
+    function parseInput() {
+      N$ = "";
+      I = 0;
+      moveDir = "";
+
+      const s = normalizeInputLine(I$);
+      if (s.length === 0) { V$ = ""; return; }
+
+      const parts = s.split(" ");
+      V$ = parts[0] || "";
+      N$ = parts.slice(1).join(" ");
+
+      // Single-letter direction shortcuts (avoid ambiguity with verb abbreviation matching).
+      if (lang === "pt") {
+        if (V$ === "N") { I = 1; moveDir = "N"; return; }
+        if (V$ === "S") { I = 1; moveDir = "S"; return; }
+        if (V$ === "L") { I = 1; moveDir = "E"; return; }
+        if (V$ === "O") { I = 1; moveDir = "W"; return; }
+      } else {
+        if (V$ === "N") { I = 1; moveDir = "N"; return; }
+        if (V$ === "S") { I = 1; moveDir = "S"; return; }
+        if (V$ === "E") { I = 1; moveDir = "E"; return; }
+        if (V$ === "W") { I = 1; moveDir = "W"; return; }
+      }
+
+      const list = VERBS[lang] || VERBS.pt;
+      for (let k = 0; k < list.length; k++) {
+        if (list[k].token.startsWith(V$)) {
+          I = list[k].code;
+          moveDir = list[k].dir || "";
+          break;
+        }
+      }
+    }
+
+    // ============================================================
+    // Locations
+    // ============================================================
+    function describeLocation() {
+      clearScreen();
+
+      // (line 320) random tax collector placement
+      if (Math.floor(Math.random() * 15) + 1 === 1 && TA === 0) {
+        OB[7] = L;
+        TA = 1;
+      }
+
+      if (L < 11) {
+        switch (L) {
+          case 4: loc4(); break;
+          case 7: loc7(); break;
+          case 8: loc8(); break;
+          case 10: loc10(); break;
+        }
+      } else if (L < 21) {
+        switch (L - 10) {
+          case 1: loc11(); break;
+          case 4: loc14(); break;
+          case 5: loc15(); break;
+          case 6: loc16(); break;
+          case 7: loc17(); break;
+          case 8: loc18(); break;
+        }
+      } else if (L < 26) {
+        switch (L - 20) {
+          case 2: loc22(); break;
+          case 4: loc24(); break;
+        }
+      }
+
+      for (let i = 1; i <= NB; i++) {
+        if (OB[i] === L) print(SI$[i]);
+      }
+
+      // (line 400) show exits only if not dark room, or lamp lit and carried
+      if (L !== 11 || (LA === 1 && OB[6] === -1)) {
+        print(t("exits_you_can_go"));
+        if (N > 0) print("             " + t("dir_north"));
+        if (E > 0) print("             " + t("dir_east"));
+        if (S > 0) print("             " + t("dir_south"));
+        if (W > 0) print("             " + t("dir_west"));
+      }
+
+      print("");
+
+      showLocationImage();
+      refreshObjectsInLocation();
+      refreshInventoryImages();
+    }
+
+    function loc4()  { print(t("loc_outside_building"));      N=0;E=0;S=1;W=0; }
+    function loc7()  { print(t("loc_river"));                 N=0;E=1;S=0;W=0; }
+    function loc8()  { print(t("loc_petrified_forest"));      N=0;E=0;S=1;W=1; }
+    function loc10() { print(t("loc_dirty_room"));            N=1;E=1;S=1;W=0; }
+
+    function loc11() {
+      print(t("loc_dark_room"));
+      if (OB[6] !== -1 || LA !== 1) {
+        N=0;E=0;S=0;W=0;
+        print(t("loc_too_dark"));
+        return;
+      }
+      N=0;E=0;S=1;W=1;
+    }
+
+    function loc14() { print(t("loc_muddy_shortcut"));        N=1;E=1;S=0;W=0; }
+    function loc15() { print(t("loc_hidden_city_entrance"));  N=0;E=1;S=0;W=1; }
+    function loc16() { print(t("loc_entrance_hall"));         N=1;E=1;S=1;W=1; }
+    function loc17() { print(t("loc_courtyard"));             N=1;E=1;S=0;W=1; }
+    function loc18() { print(t("loc_garden"));                N=0;E=0;S=1;W=1; }
+    function loc22() { print(t("loc_pantry"));                N=1;E=0;S=0;W=0; }
+    function loc24() { print(t("loc_throne_room"));           N=1;E=0;S=0;W=0; }
+
+    // ============================================================
+    // Commands
+    // ============================================================
+    function cmdMover() {
+      if (moveDir === "N" && N > 0) { L -= 6; describeLocation(); return; }
+      if (moveDir === "E" && E > 0) { L += 1; describeLocation(); return; }
+      if (moveDir === "S" && S > 0) { L += 6; describeLocation(); return; }
+      if (moveDir === "W" && W > 0) { L -= 1; describeLocation(); return; }
+      print("");
+      print(t("cant_go_that_way"));
+    }
+
+    function cmdListar() {
+      print(t("you_have"));
+      let inCount = 0;
+      for (let g = 1; g <= NB; g++) {
+        if (OB[g] === -1) {
+          print("          " + OB$[g]);
+          inCount++;
+        }
+      }
+      if (inCount === 0) print(t("nothing"));
+    }
+
+    function cmdPegar() {
+      let g;
+      for (g = 1; g <= NB; g++) {
+        if (objNameMatches(g, N$)) break;
+      }
+      if (g > NB) { print(N$ + "???"); return; }
+      if (OB[g] === -1) { print(t("already_have_it")); return; }
+      if (OB[g] !== L) { print(t("not_here")); return; }
+      print(t("ok"));
+      OB[g] = -1;
+    }
+
+    function cmdDeixar() {
+      let g;
+      for (g = 1; g <= NB; g++) {
+        if (objNameMatches(g, N$)) break;
+      }
+      if (g > NB) { print(N$ + "???"); return; }
+      if (OB[g] !== -1) { print(t("cant_do_what_you_dont_have", V$)); return; }
+      print(t("ok"));
+      OB[g] = L;
+    }
+
+    function cmdPuxar() {
+      const inChain = objNameMatches(3, N$) ? 1 : 0;
+
+      if (inChain === 1 && L !== 24) { print(t("pull_nothing")); return; }
+      if (inChain !== 1) { print(t("cant_pull")); return; }
+
+      if (OB[5] !== -1) {
+        print(t("flushed"));
+        gameOver();
+        return;
+      }
+      print(t("congrats"));
+      gameOver();
+    }
+
+    function cmdNadar() {
+      if (L !== 7) { print(t("where")); return; }
+
+      // if carrying brick (2), drown
+      if (OB[2] === -1) {
+        print(t("drowned"));
+        gameOver();
+        return;
+      }
+
+      // if revolver not yet found (OB4 > -1), then you find it
+      if (OB[4] > -1) {
+        print(t("found_revolver"));
+        OB[4] = -1;
+        return;
+      }
+
+      print(t("soaked"));
+    }
+
+    function cmdEsvaziar() {
+      if (!objNameMatches(1, N$)) { print(t("cant_be_emptied")); return; }
+      if (OB[1] !== -1) { print(t("cant_do_what_you_dont_have", V$)); return; }
+      print(t("marbles_scatter"));
+      // the BASIC uses OB(5) as the "bolinhas" but it is actually the OLHO item
+      OB[5] = L;
+    }
+
+    function cmdAcender() {
+      if (!objNameMatches(6, N$)) { print(t("cant_be_done")); return; }
+      if (OB[6] !== -1) { print(t("cant_do_what_you_dont_have", V$)); return; }
+      if (LA === 1) { print(t("already_lit")); return; }
+      LA = 1;
+      print(t("ok"));
+    }
+
+    function cmdMatar() {
+      if (OB[4] !== -1) { print(t("with_what")); return; }
+      if (OB[7] !== L) { print(t("who_q", V$)); return; }
+      print(t("you_killed_the", OB$[7]));
+      OB[7] = 0;
+    }
+
+    function cmdAjudar() {
+      if (L !== 7 || OB[2] !== -1) { print(t("cant_help_now")); return; }
+      print(t("bricks_heavy"));
+    }
+
+    function cmdDesistir() {
+      gameOver();
+    }
+
+    function maybeTaxman() {
+      // BASIC: IF OB(7)=L AND I <> 10 THEN 1590
+      if (OB[7] === L && I !== 10) {
+        let inCount = 0;
+        OB[7] = 0;
+
+        for (let k = 1; k <= NB; k++) {
+          if (OB[k] === -1) inCount++;
+        }
+
+        if (inCount === 0) {
+          print(t("taxman_dungeon"));
+          gameOver();
+          return true;
+        }
+
+        let k;
+        do {
+          k = Math.floor(Math.random() * NB) + 1;
+        } while (OB[k] !== -1);
+
+        print(t("taxman_takes", OB$[k]));
+        OB[k] = 0;
+        return true;
+      }
+      return false;
+    }
+
+    // ============================================================
+    // Prompts (S/N + press Enter)
+    // ============================================================
+    function disableInput() {
+      input.disabled = true;
+    }
+
+    function waitYesNo() {
+      gameMode = "question";
+      return new Promise(resolve => {
+        function handler(e) {
+          if (e.key !== "Enter") return;
+
+          const v = normalizeInputLine(input.value);
+          const yes = (lang === "pt")
+            ? (v === "S" || v === "SIM")
+            : (v === "Y" || v === "YES");
+          const no = (lang === "pt")
+            ? (v === "N" || v === "NAO")
+            : (v === "N" || v === "NO");
+
+          if (yes || no) {
+            input.removeEventListener("keydown", handler);
+            input.value = "";
+            gameMode = "play";
+            resolve(yes);
+          }
+        }
+        input.addEventListener("keydown", handler);
+        input.focus();
+      });
+    }
+
+    function waitKey() {
+      gameMode = "question";
+      return new Promise(resolve => {
+        function handler(e) {
+          if (e.key !== "Enter") return;
+          input.removeEventListener("keydown", handler);
+          input.value = "";
+          gameMode = "play";
+          resolve();
+        }
+        input.addEventListener("keydown", handler);
+        input.focus();
+      });
+    }
+
+    function waitLanguageChoice() {
+      gameMode = "question";
+      return new Promise(resolve => {
+        // Always bilingual here because the player hasn't chosen yet.
+        print("ESCOLHA O IDIOMA (PT/EN):");
+        print("CHOOSE LANGUAGE (PT/EN):");
+
+        function handler(e) {
+          if (e.key !== "Enter") return;
+
+          const v = normalizeInputLine(input.value);
+          input.value = "";
+
+          if (v === "PT" || v === "PTBR" || v === "PT-BR" || v === "BR" || v === "1" || v === "PORTUGUES") {
+            input.removeEventListener("keydown", handler);
+            lang = "pt";
+            applyLanguageUI();
+            gameMode = "play";
+            resolve(lang);
+            return;
+          }
+
+          if (v === "EN" || v === "ENG" || v === "2" || v === "ENGLISH") {
+            input.removeEventListener("keydown", handler);
+            lang = "en";
+            applyLanguageUI();
+            gameMode = "play";
+            resolve(lang);
+            return;
+          }
+
+          print("");
+          print("OPÇÃO INVÁLIDA. DIGITE PT OU EN.");
+          print("INVALID OPTION. TYPE PT OR EN.");
+        }
+
+        input.addEventListener("keydown", handler);
+        input.focus();
+      });
+    }
+
+    function gameOver() {
+      print("");
+      print(t("play_again"));
+      waitYesNo().then(yes => {
+        if (yes) {
+          startGame();
+        } else {
+          print(t("end"));
+          disableInput();
+        }
+      });
+    }
+
+    // ============================================================
+    // Main command loop
+    // ============================================================
+    function handleCommand() {
+      if (gameMode !== "play") return;
+
+      I$ = normalizeInputLine(input.value);
+      input.value = "";
+
+      if (I$.length === 0) return;
+
+      print(t("echo_prefix") + " " + I$);
+
+      parseInput();
+
+      if (maybeTaxman()) {
+        refreshObjectsInLocation();
+        refreshInventoryImages();
+        return;
+      }
+
+      if (I === 0) {
+        print("");
+        print(t("dont_know_how") + " " + V$);
+        return;
+      }
+
+      const oldL = L;
+
+      switch (I) {
+        case 1:  cmdMover();    break;
+        case 2:  cmdPegar();    break;
+        case 3:  cmdDeixar();   break;
+        case 4:  cmdPuxar();    break;
+        case 5:  cmdNadar();    break;
+        case 6:  cmdEsvaziar(); break;
+        case 7:  cmdAcender();  break;
+        case 8:  cmdDesistir(); break;
+        case 9:  cmdListar();   break;
+        case 10: cmdMatar();    break;
+        case 11: cmdAjudar();   break;
+      }
+
+      // Movement redraw happens inside cmdMover on success; for other actions, just refresh UI
+      if (!(I === 1 && L !== oldL)) {
+        showLocationImage();
+        refreshObjectsInLocation();
+        refreshInventoryImages();
+      }
+    }
+
+    // ============================================================
+    // Instructions
+    // ============================================================
+    function showInstructions() {
+      clearScreen();
+      print(t("intro_1"));
+      print("");
+      print(t("intro_2"));
+      print("");
+      print(t("intro_3"));
+      print("");
+      print(t("press_enter_continue"));
+      waitKey().then(() => describeLocation());
+    }
+
+    function askInstructions() {
+      print(t("want_instructions"));
+      waitYesNo().then(yes => {
+        if (yes) showInstructions();
+        else describeLocation();
+      });
+    }
+
+    // ============================================================
+    // Start game
+    // ============================================================
+    function startGame() {
+      hideCover();
+      // start background music after user interaction
+      if (bgm) {
+        bgm.volume = 0.4;
+        bgm.play().catch(() => {
+          // ignore if browser still blocks; user can start later
+        });
+      }      
+
+      input.disabled = false;
+      input.focus();
+
+      L = 15;
+      N=0;S=0;E=0;W=0;
+      LA = 0;
+      TA = 0;
+
+      // default language (until player chooses)
+      lang = "pt";
+      applyLanguageUI();
+
+      clearScreen();
+      waitLanguageChoice().then(() => {
+        initVerbsForLang();
+        initObjects();
+        clearScreen();
+        askInstructions();
+      });
+    }
+
+    // ============================================================
+    // Global key handling
+    // ============================================================
+    document.addEventListener("keydown", (e) => {
+      // Start from cover with Enter
+      if (gameMode === "cover" && e.key === "Enter") {
+        gameMode = "play";
+        startGame();
+        return;
+      }
+
+      // Force uppercase + collapse spaces while typing (optional but helps UX)
+      // This doesn't replace the final normalization, it's just a live hint.
+      if (e.target === input) {
+        // no-op here; we normalize on enter anyway
+      }
+    });
+
+    input.addEventListener("input", () => {
+      // apenas força maiúsculas, sem mexer em espaços
+      input.value = input.value.toUpperCase();
+    });
+
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleCommand();
+    });
+
+    // ============================================================
+    // Initial state: show cover, focus input (for Enter to start)
+    // ============================================================
+    input.disabled = false;
+    input.focus();
+  </script>
+</body>
+</html>
