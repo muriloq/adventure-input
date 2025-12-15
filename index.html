@@ -808,6 +808,9 @@
       if (OB[6] !== -1) { print(t("cant_do_what_you_dont_have", V$)); return; }
       if (LA === 1) { print(t("already_lit")); return; }
       LA = 1;
+      // In the dark room, exits are computed inside loc11() based on lamp state.
+      // After lighting the lamp, re-describe the location so exits are revealed and movement is enabled.
+      if (L === 11) { describeLocation(); return; }
       print(t("ok"));
     }
 
