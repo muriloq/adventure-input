@@ -802,11 +802,10 @@
       // the BASIC uses OB(5) as the "bolinhas" but it is actually the OLHO item
       OB[5] = L;
 
-      // Re-print objects at the current location (without clearing), so the new object is described immediately.
+      // Describe the newly revealed object immediately, and refresh UI.
       print("");
-      for (let i = 1; i <= NB; i++) {
-        if (OB[i] === L) print(SI$[i]);
-      }
+      print(t("obj_here_eye"));
+      refreshObjectsInLocation();
     }
 
     function cmdAcender() {
