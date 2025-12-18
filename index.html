@@ -13,8 +13,10 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      min-height: 100vh;
+      min-height: 100dvh;
       overflow: hidden;
+      -webkit-text-size-adjust: 100%;
     }
 
     /* --- Cover overlay (Option 1) --- */
@@ -119,6 +121,7 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+      flex: 0 0 auto;
     }
     #prompt-line {
       display: flex;
@@ -135,6 +138,20 @@
       border: 1px solid #555;
       outline: none;
       text-transform: uppercase; /* UI hint; still enforced in JS */
+      min-width: 0;
+    }
+    #send-btn {
+      flex: 0 0 auto;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 7px 10px;
+      background: #222;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+    }
+    #send-btn:active {
+      background: #2c2c2c;
     }
     #inventory-area {
       min-height: 160px;
@@ -157,6 +174,54 @@
       background: #000;
       border: 1px solid #444;
       border-radius: 4px;
+    }
+
+    /* --- Mobile / narrow screens --- */
+    @media (max-width: 900px) {
+      body {
+        overflow: hidden;
+      }
+
+      #top {
+        flex-direction: column;
+      }
+
+      /* Put image+objects above the text on mobile */
+      #right-panel {
+        order: -1;
+        flex: 0 0 auto;
+        height: 42vh;
+        min-height: 220px;
+        border-left: none;
+        border-bottom: 1px solid #444;
+      }
+
+      #screen {
+        flex: 1 1 auto;
+        font-size: 14px;
+      }
+
+      #image-area {
+        flex: 1 1 auto;
+      }
+
+      /* Make objects strip horizontal-scrolling on phones */
+      #objects-area {
+        flex: 0 0 auto;
+        height: 110px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+      }
+
+      .obj-thumb, .inv-thumb {
+        width: 84px;
+        height: 84px;
+      }
+
+      #cmd {
+        font-size: 16px; /* prevent iOS zoom */
+      }
     }
   </style>
 </head>
@@ -188,7 +253,8 @@
   <div id="input-area">
     <div id="prompt-line">
       <span id="prompt">PARA ONDE</span>
-      <input id="cmd" autocomplete="off" spellcheck="false" />
+      <input id="cmd" autocomplete="off" spellcheck="false" inputmode="text" enterkeyhint="send" />
+      <button id="send-btn" type="button" aria-label="Enter/Enviar">Enter / Enviar</button>
     </div>
 
     <div id="inventory-area" aria-label="Inventário">
@@ -441,6 +507,7 @@
     const input = document.getElementById("cmd");
     const promptEl = document.getElementById("prompt");
     const invLabelEl = document.getElementById("inv-label");
+    const sendBtn = document.getElementById("send-btn");
 
     const locImage = document.getElementById("loc-image");
     const objectsArea = document.getElementById("objects-area");
@@ -503,6 +570,19 @@
 
     function hideCover() {
       if (coverScreen) coverScreen.style.display = "none";
+    }
+
+    function submitInput() {
+      // Support the mobile "Enter/Enviar" button:
+      // - In play mode: run command handler
+      // - In question mode: trigger the same keydown(Enter) listeners used by waitYesNo/waitLanguageChoice/waitKey
+      if (gameMode === "play") {
+        handleCommand();
+        return;
+      }
+      if (gameMode === "question") {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      }
     }
 
     // ============================================================
@@ -1096,6 +1176,20 @@
       }
     });
 
+    // Start from cover with click/tap (mobile-friendly)
+    if (coverScreen) {
+      coverScreen.addEventListener("click", () => {
+        if (gameMode !== "cover") return;
+        gameMode = "play";
+        startGame();
+      });
+      coverScreen.addEventListener("touchstart", () => {
+        if (gameMode !== "cover") return;
+        gameMode = "play";
+        startGame();
+      }, { passive: true });
+    }
+
     input.addEventListener("input", () => {
       // apenas força maiúsculas, sem mexer em espaços
       input.value = input.value.toUpperCase();
@@ -1105,6 +1199,13 @@
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") handleCommand();
     });
+
+    if (sendBtn) {
+      sendBtn.addEventListener("click", () => {
+        input.focus();
+        submitInput();
+      });
+    }
 
     // ============================================================
     // Initial state: show cover, focus input (for Enter to start)
