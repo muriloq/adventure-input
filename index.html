@@ -153,6 +153,21 @@
     #send-btn:active {
       background: #2c2c2c;
     }
+    #music-btn {
+      flex: 0 0 auto;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 7px 10px;
+      background: #111;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+      display: none; /* shown only when autoplay is blocked */
+      white-space: nowrap;
+    }
+    #music-btn:active {
+      background: #1c1c1c;
+    }
     #inventory-area {
       min-height: 160px;
       padding: 4px 0 0 0;
@@ -247,7 +262,7 @@
 </head>
 
 <body>
-  <audio id="bgm" src="hidden-past-kevin-macleod-main-version-18636-03-12.mp3" loop ></audio>
+  <audio id="bgm" src="hidden-past-kevin-macleod-main-version-18636-03-12.mp3" loop preload="auto"></audio>
   
   <!-- Cover overlay -->
   <div id="cover-screen" aria-label="Capa do jogo">
@@ -275,6 +290,7 @@
       <span id="prompt">PARA ONDE</span>
       <input id="cmd" autocomplete="off" spellcheck="false" inputmode="text" enterkeyhint="send" />
       <button id="send-btn" type="button" aria-label="Enter/Enviar">Enter / Enviar</button>
+      <button id="music-btn" type="button" aria-label="Play music / Tocar música">Play music / Tocar música</button>
     </div>
 
     <div id="inventory-area" aria-label="Inventário">
@@ -528,6 +544,7 @@
     const promptEl = document.getElementById("prompt");
     const invLabelEl = document.getElementById("inv-label");
     const sendBtn = document.getElementById("send-btn");
+    const musicBtn = document.getElementById("music-btn");
 
     const locImage = document.getElementById("loc-image");
     const objectsArea = document.getElementById("objects-area");
@@ -542,6 +559,24 @@
       if (invLabelEl) invLabelEl.textContent = t("inv_label");
       if (objectsArea) objectsArea.setAttribute("aria-label", (lang === "pt") ? "Objetos aqui" : "Objects here");
       if (inventoryArea) inventoryArea.setAttribute("aria-label", (lang === "pt") ? "Inventário" : "Inventory");
+
+      if (musicBtn) {
+        // Keep the music button bilingual so it's usable before/after language selection.
+        musicBtn.textContent = "Play music / Tocar música";
+        musicBtn.setAttribute("aria-label", "Play music / Tocar música");
+      }
+    }
+
+    async function tryStartBgm() {
+      if (!bgm) return;
+      try {
+        bgm.volume = 0.4;
+        await bgm.play();
+        if (musicBtn) musicBtn.style.display = "none";
+      } catch {
+        // Autoplay blocked: show a button so the user can start audio with an explicit gesture.
+        if (musicBtn) musicBtn.style.display = "inline-block";
+      }
     }
 
     // Make the app use only the *visible* viewport height (important on mobile when the keyboard is open).
@@ -1161,13 +1196,8 @@
     // ============================================================
     function startGame() {
       hideCover();
-      // start background music after user interaction
-      if (bgm) {
-        bgm.volume = 0.4;
-        bgm.play().catch(() => {
-          // ignore if browser still blocks; user can start later
-        });
-      }      
+      // start background music after user interaction (mobile may block autoplay)
+      tryStartBgm();
 
       input.disabled = false;
       input.focus();
@@ -1236,6 +1266,13 @@
       sendBtn.addEventListener("click", () => {
         input.focus();
         submitInput();
+      });
+    }
+
+    if (musicBtn) {
+      musicBtn.addEventListener("click", () => {
+        // This click is a user gesture; try to start audio now.
+        tryStartBgm();
       });
     }
 
