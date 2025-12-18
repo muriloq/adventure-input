@@ -190,8 +190,8 @@
       #right-panel {
         order: -1;
         flex: 0 0 auto;
-        height: 42vh;
-        min-height: 220px;
+        height: 34vh;
+        min-height: 170px;
         border-left: none;
         border-bottom: 1px solid #444;
       }
@@ -208,19 +208,29 @@
       /* Make objects strip horizontal-scrolling on phones */
       #objects-area {
         flex: 0 0 auto;
-        height: 110px;
+        height: 86px;
         overflow-x: auto;
         overflow-y: hidden;
         flex-wrap: nowrap;
       }
 
       .obj-thumb, .inv-thumb {
-        width: 84px;
-        height: 84px;
+        width: 64px;
+        height: 64px;
       }
 
       #cmd {
         font-size: 16px; /* prevent iOS zoom */
+      }
+
+      /* Keep inventory compact on phones */
+      #inventory-area {
+        min-height: 88px;
+        max-height: 88px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+        align-items: center;
       }
     }
   </style>
