@@ -190,15 +190,16 @@
       #right-panel {
         order: -1;
         flex: 0 0 auto;
-        height: 34vh;
-        min-height: 170px;
+        height: clamp(140px, 28dvh, 220px);
+        min-height: 0;
         border-left: none;
         border-bottom: 1px solid #444;
       }
 
       #screen {
         flex: 1 1 auto;
-        font-size: 14px;
+        font-size: 13px;
+        padding: 8px;
       }
 
       #image-area {
@@ -208,15 +209,17 @@
       /* Make objects strip horizontal-scrolling on phones */
       #objects-area {
         flex: 0 0 auto;
-        height: 86px;
+        height: clamp(56px, 10dvh, 74px);
         overflow-x: auto;
         overflow-y: hidden;
         flex-wrap: nowrap;
+        padding: 4px;
+        gap: 4px;
       }
 
       .obj-thumb, .inv-thumb {
-        width: 64px;
-        height: 64px;
+        width: 56px;
+        height: 56px;
       }
 
       #cmd {
@@ -225,12 +228,19 @@
 
       /* Keep inventory compact on phones */
       #inventory-area {
-        min-height: 88px;
-        max-height: 88px;
+        min-height: clamp(44px, 9dvh, 64px);
+        max-height: clamp(44px, 9dvh, 64px);
         overflow-x: auto;
         overflow-y: hidden;
         flex-wrap: nowrap;
         align-items: center;
+        gap: 4px;
+        padding: 2px 0 0 0;
+      }
+
+      #input-area {
+        padding: 6px 8px;
+        gap: 4px;
       }
     }
   </style>
