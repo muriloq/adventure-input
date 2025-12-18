@@ -13,8 +13,8 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
-      min-height: 100dvh;
+      /* Dynamic height driven by JS (VisualViewport) so mobile keyboards shrink the usable area */
+      height: var(--app-height, 100dvh);
       overflow: hidden;
       -webkit-text-size-adjust: 100%;
     }
@@ -542,6 +542,18 @@
       if (invLabelEl) invLabelEl.textContent = t("inv_label");
       if (objectsArea) objectsArea.setAttribute("aria-label", (lang === "pt") ? "Objetos aqui" : "Objects here");
       if (inventoryArea) inventoryArea.setAttribute("aria-label", (lang === "pt") ? "Inventário" : "Inventory");
+    }
+
+    // Make the app use only the *visible* viewport height (important on mobile when the keyboard is open).
+    function updateAppHeight() {
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--app-height", `${Math.round(h)}px`);
+    }
+    updateAppHeight();
+    window.addEventListener("resize", updateAppHeight);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", updateAppHeight);
+      window.visualViewport.addEventListener("scroll", updateAppHeight);
     }
 
     function print(text = "") {
@@ -1226,6 +1238,16 @@
         submitInput();
       });
     }
+
+    // When the keyboard opens, ensure the input stays visible.
+    input.addEventListener("focus", () => {
+      updateAppHeight();
+      // Delay to allow keyboard/viewport to settle
+      setTimeout(() => {
+        updateAppHeight();
+        input.scrollIntoView({ block: "end", inline: "nearest" });
+      }, 50);
+    });
 
     // ============================================================
     // Initial state: show cover, focus input (for Enter to start)
